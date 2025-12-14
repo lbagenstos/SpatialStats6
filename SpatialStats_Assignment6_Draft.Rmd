@@ -32,7 +32,7 @@ library(slam) # <- adding to library so we can process sparse sums
 Now, it's time to load and preprocess the IMDB reviews (which I downloaded from Kaggle using the link in the Assignment 6 word doc).
 ```{r load-data}
 
-IMDB_reviews <- read.csv("IMDB_Dataset.csv") 
+IMDB_reviews <- read.csv("IMDB_Dataset.csv", nrows=200) 
 glimpse(IMDB_reviews)
 
 ```
@@ -197,7 +197,7 @@ NEW METHOD, TO PREVENT ERRORS: Derive DTM from filtered TDM
 # dtm_cleaned <- DocumentTermMatrix(myCorpus)
 # tm::inspect(dtm_cleaned)
 
-dtm_cleaned <- tdm_filtered
+dtm_cleaned <- tdm#_filtered
 dtm_cleaned <- t(dtm_cleaned)  #transpose TDM → DTM
 
 dtm_cleaned
@@ -246,7 +246,7 @@ wordcloud(
 In our preparation for cluster analysis, let's remove all variables where the column sum is less than 10,000 (i.e., if the term appears less than 10,000 times in all documents). We are only doing it here so that we have a reasonable number of variables to include in the cluster analysis for the sake of this example. If we were to have a lot more observations, we wouldn't necessarily need or want to do this.
 
 ```{r warning=FALSE, message=FALSE, cache=FALSE}
-variables_to_remove <- cs < 10000
+variables_to_remove <- cs < 100 #changed to not get rid of too many
 
 # Subset matrix frame, excluding those variables
 m_subset <- m[, !variables_to_remove]
@@ -279,13 +279,13 @@ Of course, before performing the k-means analysis on the scaled (normalized) rel
 #      ylab="Within groups sum of squares")
 # 
 # #NbClust approach
-# set.seed(1234)
-# nc <- NbClust(m_scale, min.nc=2, max.nc=15, method="kmeans", index="all")
-# #table(nc$Best.n[1,])
-# par(mfrow=c(1,1)) 
-# barplot(table(nc$Best.n[1,]),
-#         xlab="Numer of Clusters", ylab="Number of Criteria",
-#         main="Number of Clusters Chosen by 26 Criteria")
+set.seed(1234)
+nc <- NbClust(m_scale, min.nc=2, max.nc=15, method="kmeans", index="all")
+table(nc$Best.n[1,])
+par(mfrow=c(1,1)) 
+barplot(table(nc$Best.n[1,]),
+        xlab="Numer of Clusters", ylab="Number of Criteria",
+        main="Number of Clusters Chosen by 26 Criteria")
 
 
 set.seed(123)
@@ -321,26 +321,67 @@ k_means_results$size
 
 Finally, let's look at the number of times each of the terms appears in each cluster. We can also do this with proportions - that may make more sense. Ultimately, we see that certain terms have different frequencies in the clusters, but again, relative frequencies may be more relevant here.
 
-```{r warning=FALSE, message=FALSE, cache=FALSE}
-word_totals_by_cluster <- round(aggregate(m_subset, by=list(cluster=k_means_results$cluster), sum),1)
+```{r message=FALSE, warning=FALSE, cache=FALSE}
+#word_totals_by_cluster <- round(aggregate(m_subset, by=list(cluster=k_means_results$cluster), sum),1)
+#had to comment that out due to error, instead used:
+word_totals_by_cluster <- rowsum(
+  as.matrix(m_subset),
+  k_means_results$cluster
+)
+#I got all this from chatgpt b/c Eugene's code wasn't working but idk if it's right
+library(slam)
+
+# dtm = DocumentTermMatrix
+# k_means_results$cluster = cluster labels for each document
+
+word_totals_by_cluster_sparse <- rollup(
+  dtm_cleaned,                   # your DocumentTermMatrix
+  MARGIN = 1,            # 1 = rows/documents
+  index = k_means_results$cluster,
+  FUN = sum
+)
+
+top_terms <- names(sort(col_sums(word_totals_by_cluster_sparse), decreasing = TRUE))[1:10]
+plot_matrix <- as.matrix(word_totals_by_cluster_sparse[, top_terms])
+rownames(plot_matrix) <- paste0("Cluster_", 1:nrow(plot_matrix))
+
+par(cex.axis = 0.8, las = 2)
+
+barplot(
+  t(plot_matrix),
+  beside = TRUE,
+  col = c("blue", "green"),
+  legend.text = rownames(plot_matrix),
+  args.legend = list(x = "topright"),
+  main = "Top Words by Cluster",
+  xlab = "Words",
+  ylab = "Total Frequency"
+)
+
+
 
 #Let's plot the results!
 #Decrease font size and rotate x-axis labels vertically
-par(cex.axis = 0.7)  # Adjust the font size
-par(las = 2)        # Rotate labels vertically
+#par(cex.axis = 0.7)  # Adjust the font size
+#par(las = 2)        # Rotate labels vertically
 
-barplot(as.matrix(word_totals_by_cluster[-1]),
-        beside = TRUE,
-        col = c("blue", "green"),
-        legend.text = TRUE,
-        args.legend = list(x = "topright"))
+#barplot(as.matrix(word_totals_by_cluster[-1]),
+#        beside = TRUE,
+#        col = c("blue", "green"),
+#        legend.text = TRUE,
+#        args.legend = list(x = "topright"))
+#title(
+#  main = "Bar Plot of Sums by Cluster",
+#  xlab = "Words",
+#  ylab = "Sum"
+#)
 
 # Add labels to the x-axis and y-axis. Here, the first cluster is in blue and the second one is in green.
-title(xlab = "Cluster")
-title(ylab = "Sum")
+#title(xlab = "Cluster")
+#title(ylab = "Sum")
 
 # Add a title to the plot
-title(main = "Bar Plot of Sums by Group")
+#title(main = "Bar Plot of Sums by Group")
 ```
 
 
@@ -385,35 +426,41 @@ get_nrc_sentiment("gorgeous")
 Now, let's go back to our book example. For the sake of this lexicon, let's take the first book in our data, War And Peace, which is the first row of the matrix `m`. The `get_nrc_sentiment` command obtains the sentiment score for each word in War And Peace that wasn't removed in the cleaning process above.
 
 ```{r warning=FALSE, message=FALSE, cache=FALSE}
-War_And_Peace <- as.data.frame(m[1,])
-War_And_Peace$Term <- as.vector(rownames(War_And_Peace))
-colnames(War_And_Peace)[1] = "Term_Frequency"
-rownames(War_And_Peace) <- 1:nrow(War_And_Peace)
 
-nrc_sentiment <- get_nrc_sentiment(War_And_Peace$Term)
+#added some code to fix error
+first_row_matrix <- as.matrix(dtm_cleaned[1, ])  # select first row
+Review_1 <- data.frame(term = colnames(dtm_cleaned), count = as.numeric(first_row_matrix[1, ]))
+
+
+colnames(Review_1)[2] = "Term_Frequency"
+rownames(Review_1) <- 1:nrow(Review_1)
+
+nrc_sentiment <- get_nrc_sentiment(Review_1$term)
 ```
 
 Let's combine the original data frame and the sentiment counts.
 
 ```{r warning=FALSE, message=FALSE, cache=FALSE}
-War_And_Peace_Sentiment <- cbind(War_And_Peace, nrc_sentiment)
+Review_1_Sentiment <- cbind(Review_1, nrc_sentiment)
+
 ```
 
 Now let's multiply the sentiment by the frequency of the term.
 
 ```{r warning=FALSE, message=FALSE, cache=FALSE}
 # Select the columns to be multiplied (last ten columns)
-cols_to_multiply <- names(War_And_Peace_Sentiment)[3:12]
+cols_to_multiply <- names(Review_1_Sentiment)[4:12] #I changed from 3 to 4 b/c it was capturing a text column -AM
 
 # Multiply the last ten columns (sentiments) by the first column (Term_Frequency)
-War_And_Peace_Sentiment[, cols_to_multiply] <- War_And_Peace_Sentiment[, cols_to_multiply] * War_And_Peace_Sentiment$Term_Frequency
+Review_1_Sentiment[, cols_to_multiply] <- Review_1_Sentiment[, cols_to_multiply] * Review_1_Sentiment$Term_Frequency
 ```
 
 Now, let's see the total prevalence of each sentiment in the text by summing each column and creating a bar plot
 
 ```{r warning=FALSE, message=FALSE, cache=FALSE}
-War_And_Peace_Sentiment_Total <- t(as.matrix(colSums(War_And_Peace_Sentiment[,-1:-2])))
-barplot(War_And_Peace_Sentiment_Total, las=2, ylab='Count', main='Sentiment Scores')
+Review_1_Sentiment_Total <- t(as.matrix(colSums(Review_1_Sentiment[,-1:-3]))) #I changed from -2 to -3 to match above -AM
+barplot(Review_1_Sentiment_Total, las=2, ylab='Count', main='Sentiment Scores')
+
 ```
 
 Note that this can be done for each of the books, and then the total sentiment scores (ideally, weighted by the number of terms in each book and then normalized) can be subjected to a cluster analysis. This way, we can see if we can group the books based on the sentiments expressed, rather than the most frequently occurring terms themselves. This will be skipped in this Markdown.
@@ -421,32 +468,32 @@ Note that this can be done for each of the books, and then the total sentiment s
 Now, let's play around with some of the other lexicons. Specifically, we will use the `get_sentiment` command to get the scores for each of the terms using each dictionary, and save the output to the original `War_And_Peace` data frame.
 
 ```{r warning=FALSE, message=FALSE, cache=FALSE}
-War_And_Peace$Syuzhet <- as.matrix(get_sentiment(War_And_Peace$Term, method="syuzhet"))
-hist(War_And_Peace$Syuzhet)
-War_And_Peace$Bing <- as.matrix(get_sentiment(War_And_Peace$Term, method="bing"))
-hist(War_And_Peace$Bing)
-War_And_Peace$AFINN <- as.matrix(get_sentiment(War_And_Peace$Term, method="afinn"))
-hist(War_And_Peace$AFINN)
-War_And_Peace$NRC <- as.matrix(get_sentiment(War_And_Peace$Term, method="nrc"))   #There are Negative and Positive sentiments in the NRC output above.
-hist(War_And_Peace$NRC)
+#War_And_Peace$Syuzhet <- as.matrix(get_sentiment(War_And_Peace$Term, method="syuzhet"))
+#hist(War_And_Peace$Syuzhet)
+#War_And_Peace$Bing <- as.matrix(get_sentiment(War_And_Peace$Term, method="bing"))
+#hist(War_And_Peace$Bing)
+#War_And_Peace$AFINN <- as.matrix(get_sentiment(War_And_Peace$Term, method="afinn"))
+#hist(War_And_Peace$AFINN)
+#War_And_Peace$NRC <- as.matrix(get_sentiment(War_And_Peace$Term, method="nrc"))   #There are Negative and Positive sentiments in the NRC output above.
+#hist(War_And_Peace$NRC)
 
 ```
 
 We can compare the results from the different lexicons by assigning a value of -1 to all terms that have a negative sentiment, 0 to all terms that have a neutral sentiment, and 1 to all terms that have a positive sentiment.
 
 ```{r warning=FALSE, message=FALSE, cache=FALSE}
-sentiment_columns <- War_And_Peace[ , 3:6]
-sentiment_columns <- data.frame(lapply(sentiment_columns, sign))
-sentiment_columns <- data.frame(lapply(sentiment_columns, as.factor))
+#sentiment_columns <- War_And_Peace[ , 3:6]
+#sentiment_columns <- data.frame(lapply(sentiment_columns, sign))
+#sentiment_columns <- data.frame(lapply(sentiment_columns, as.factor))
 ```
 
 Now, let's see the prevalence of _unique_ negative, neutral terms (here, we are talking about _unique_ terms because we are not weighing them by how often they appear in the document).
 
 ```{r warning=FALSE, message=FALSE, cache=FALSE}
 #Raw frequencies
-sapply(sentiment_columns, function(x) if("factor" %in% class(x)) {table(x)})
+#sapply(sentiment_columns, function(x) if("factor" %in% class(x)) {table(x)})
 #Proportions
-sapply(sentiment_columns, function(x) if("factor" %in% class(x)) {prop.table(table(x))})
+#sapply(sentiment_columns, function(x) if("factor" %in% class(x)) {prop.table(table(x))})
 ```
 
 We can see that in general, most of the terms are neutral, with about 2-6% of terms being positive and 4-12% of the terms being negative, depending on which lexicon we use. 
