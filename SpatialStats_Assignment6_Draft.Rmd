@@ -165,11 +165,11 @@ dictionary <- as.character(words::words$word)
 # }
 
 #instead, trying:
-keep_terms <- names(term_freq) %in% dictionary
-tdm_filtered <- tdm[keep_terms, ]
+#keep_terms <- names(term_freq) %in% dictionary
+#tdm_filtered <- tdm[keep_terms, ]
 
-term_freq_filtered <- sort(row_sums(tdm_filtered), decreasing = TRUE)
-head(term_freq_filtered, 20)
+#term_freq_filtered <- sort(row_sums(tdm_filtered), decreasing = TRUE)
+#head(term_freq_filtered, 20)
 
 ```
 
@@ -178,12 +178,12 @@ Let's look at the terms that were dropped in myCorpus -- these are all the words
 ```{r warning=FALSE, message=FALSE, cache=FALSE}
 # cat(content(myCorpus[[1]])[980:1000], sep = "\n")
 
-dropped_terms <- setdiff(
-  Terms(tdm),
-  Terms(tdm_filtered)
-)
+#dropped_terms <- setdiff(
+#  Terms(tdm),
+#  Terms(tdm_filtered)
+#)
 
-head(dropped_terms, 50)
+#head(dropped_terms, 50)
 #change here: Because dictionary filtering was applied at the term–document matrix level rather than the corpus level (to avoid recursion and memory limits in tm), I inspected removed terms directly from the TDM rather than from the corpus text.
 #worth noting: when I inspected the results, it included a lot of words that should have been excluded, but also some valid words (e.g. "abysmal"). I just chose to move on + treat it as a limitation, because we don't have time to inspect the whole dataset.
 ```
@@ -449,7 +449,7 @@ Now let's multiply the sentiment by the frequency of the term.
 
 ```{r warning=FALSE, message=FALSE, cache=FALSE}
 # Select the columns to be multiplied (last ten columns)
-cols_to_multiply <- names(Review_1_Sentiment)[4:12] #I changed from 3 to 4 b/c it was capturing a text column -AM
+cols_to_multiply <- names(Review_1_Sentiment)[3:12] 
 
 # Multiply the last ten columns (sentiments) by the first column (Term_Frequency)
 Review_1_Sentiment[, cols_to_multiply] <- Review_1_Sentiment[, cols_to_multiply] * Review_1_Sentiment$Term_Frequency
@@ -458,7 +458,7 @@ Review_1_Sentiment[, cols_to_multiply] <- Review_1_Sentiment[, cols_to_multiply]
 Now, let's see the total prevalence of each sentiment in the text by summing each column and creating a bar plot
 
 ```{r warning=FALSE, message=FALSE, cache=FALSE}
-Review_1_Sentiment_Total <- t(as.matrix(colSums(Review_1_Sentiment[,-1:-3]))) #I changed from -2 to -3 to match above -AM
+Review_1_Sentiment_Total <- t(as.matrix(colSums(Review_1_Sentiment[,-1:-2]))) 
 barplot(Review_1_Sentiment_Total, las=2, ylab='Count', main='Sentiment Scores')
 
 ```
